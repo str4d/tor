@@ -551,6 +551,26 @@ rend_cache_lookup_entry(const char *query, int version, rend_cache_entry_t **e)
   return ret;
 }
 
+/** Remove any cached descriptors for <b>service_id</b>. */
+void
+rend_cache_remove_entry(const char *service_id)
+{
+  char key[REND_SERVICE_ID_LEN_BASE32 + 2]; /* <version><service_id>\0 */
+  rend_cache_entry_t *removed;
+
+  tor_assert(rend_valid_service_id(service_id));
+  if (!rend_cache)
+    return;
+
+  tor_snprintf(key, sizeof(key), "2%s", service_id);
+  removed = strmap_remove_lc(rend_cache, key);
+  if (removed) {
+    log_info(LD_REND, "Removed cached v2 descriptor for service %s.",
+               safe_str_client(service_id));
+    rend_cache_entry_free(removed);
+  }
+}
+
 /*
  * Lookup the v2 service descriptor with the service ID <b>query</b> in the
  * local service descriptor cache. Return 0 if found and if <b>e</b> is

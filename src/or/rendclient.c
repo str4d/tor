@@ -7,6 +7,8 @@
  * \brief Client code to access location-hidden services.
  **/
 
+#define RENDCLIENT_PRIVATE
+
 #include "or.h"
 #include "circpathbias.h"
 #include "circuitbuild.h"
@@ -496,7 +498,7 @@ get_last_hid_serv_requests(void)
  * assign the current time <b>now</b> and return that. Otherwise, return the
  * most recent request time, or 0 if no such request has been sent before.
  */
-static time_t
+STATIC time_t
 lookup_last_hid_serv_request(routerstatus_t *hs_dir,
                              const char *desc_id_base32,
                              time_t now, int set)
@@ -602,6 +604,28 @@ rend_client_purge_last_hid_serv_requests(void)
   if (old_last_hid_serv_requests != NULL) {
     log_info(LD_REND, "Purging client last-HS-desc-request-time table");
     strmap_free(old_last_hid_serv_requests, tor_free_);
+  }
+}
+
+/** Purge all cached state relating to the given hidden service. If the
+ * optional unencoded descriptor cookie is supplied, it is used for
+ * calculating the hidden service's descriptor IDs. */
+void
+rend_client_purge_hidden_service(const char *onion_address,
+                                 const char *descriptor_cookie)
+{
+  time_t now = time(NULL);
+  uint8_t replica;
+  char desc_id[DIGEST_LEN];
+
+  tor_assert(rend_valid_service_id(onion_address));
+  rend_cache_remove_entry(onion_address);
+  for (replica = 0; replica < REND_NUMBER_OF_NON_CONSECUTIVE_REPLICAS;
+       replica++) {
+    if (rend_compute_v2_desc_id(desc_id, onion_address, descriptor_cookie,
+                                now, replica) < 0)
+      return;
+    purge_hid_serv_from_last_hid_serv_requests(desc_id);
   }
 }
 

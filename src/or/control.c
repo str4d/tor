@@ -176,6 +176,8 @@ static int handle_control_hsfetch(control_connection_t *conn, uint32_t len,
                                   const char *body);
 static int handle_control_hspost(control_connection_t *conn, uint32_t len,
                                  const char *body);
+static int handle_control_hsforget(control_connection_t *conn, uint32_t len,
+                                   const char *body);
 static int handle_control_add_onion(control_connection_t *conn, uint32_t len,
                                     const char *body);
 static int handle_control_del_onion(control_connection_t *conn, uint32_t len,
@@ -3768,6 +3770,71 @@ handle_control_hspost(control_connection_t *conn,
   return 0;
 }
 
+/** Called when we get an HSFORGET command: parse the hidden service's onion
+ * address and purge any cached state related to the service. */
+static int
+handle_control_hsforget(control_connection_t *conn, uint32_t len,
+                        const char *body)
+{
+  smartlist_t *args;
+  char *onion_address, *descriptor_cookie_base64, *descriptor_cookie_decoded;
+  char descriptor_cookie_base64ext[REND_DESC_COOKIE_LEN_BASE64 + 2 + 1];
+  (void) len; /* body is nul-terminated; it's safe to ignore the length */
+
+  args = getargs_helper("HSFORGET", conn, body, 1, 2);
+  if (!args)
+    return -1;
+  onion_address = smartlist_get(args, 0);
+  if (smartlist_len(args) == 2) {
+    descriptor_cookie_base64 = smartlist_get(args, 1);
+    descriptor_cookie_decoded = tor_malloc(REND_DESC_COOKIE_LEN + 2);
+  } else {
+    descriptor_cookie_base64 = NULL;
+    descriptor_cookie_decoded = NULL;
+  }
+  smartlist_free(args);
+
+  if (!rend_valid_service_id(onion_address)) {
+    connection_write_str_to_buf("513 Invalid hidden service address\r\n", conn);
+    goto err;
+  }
+
+  if (descriptor_cookie_base64) {
+    if (strlen(descriptor_cookie_base64) != REND_DESC_COOKIE_LEN_BASE64) {
+      connection_write_str_to_buf("513 Invalid descriptor cookie\r\n", conn);
+      goto err;
+    }
+    /* Add trailing zero bytes (AA) to make base64-decoding happy. */
+    tor_snprintf(descriptor_cookie_base64ext,
+                 REND_DESC_COOKIE_LEN_BASE64 + 2 + 1,
+                 "%sAA", descriptor_cookie_base64);
+    if (base64_decode(descriptor_cookie_decoded,
+                      sizeof(descriptor_cookie_decoded),
+                      descriptor_cookie_base64ext,
+                      strlen(descriptor_cookie_base64ext)) < 0) {
+      connection_write_str_to_buf("513 Invalid descriptor cookie\r\n", conn);
+      goto err;
+    }
+  }
+
+  rend_client_purge_hidden_service(onion_address, descriptor_cookie_decoded);
+  tor_free(onion_address);
+  if (descriptor_cookie_base64) {
+    tor_free(descriptor_cookie_base64);
+    tor_free(descriptor_cookie_decoded);
+  }
+  send_control_done(conn);
+  return 0;
+
+err:
+  tor_free(onion_address);
+  if (descriptor_cookie_base64) {
+    tor_free(descriptor_cookie_base64);
+    tor_free(descriptor_cookie_decoded);
+  }
+  return -1;
+}
+
 /** Called when we get a ADD_ONION command; parse the body, and set up
  * the new ephemeral Onion Service. */
 static int
@@ -4569,6 +4636,9 @@ connection_control_process_inbuf(control_connection_t *conn)
       return -1;
   } else if (!strcasecmp(conn->incoming_cmd, "+HSPOST")) {
     if (handle_control_hspost(conn, cmd_data_len, args))
+      return -1;
+  } else if (!strcasecmp(conn->incoming_cmd, "HSFORGET")) {
+    if (handle_control_hsforget(conn, cmd_data_len, args))
       return -1;
   } else if (!strcasecmp(conn->incoming_cmd, "ADD_ONION")) {
     int ret = handle_control_add_onion(conn, cmd_data_len, args);

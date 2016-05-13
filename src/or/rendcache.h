@@ -61,6 +61,7 @@ void rend_cache_purge(void);
 void rend_cache_free_all(void);
 int rend_cache_lookup_entry(const char *query, int version,
                             rend_cache_entry_t **entry_out);
+void rend_cache_remove_entry(const char *service_id);
 int rend_cache_lookup_v2_desc_as_service(const char *query,
                                          rend_cache_entry_t **entry_out);
 int rend_cache_lookup_v2_desc_as_dir(const char *query, const char **desc);

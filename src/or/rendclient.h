@@ -15,6 +15,8 @@
 #include "rendcache.h"
 
 void rend_client_purge_state(void);
+void rend_client_purge_hidden_service(const char *onion_address,
+                                      const char *descriptor_cookie);
 
 void rend_client_introcirc_has_opened(origin_circuit_t *circ);
 void rend_client_rendcirc_has_opened(origin_circuit_t *circ);
@@ -50,6 +52,12 @@ int rend_parse_service_authorization(const or_options_t *options,
 rend_service_authorization_t *rend_client_lookup_service_authorization(
                                                 const char *onion_address);
 void rend_service_authorization_free_all(void);
+
+#ifdef RENDCLIENT_PRIVATE
+STATIC time_t lookup_last_hid_serv_request(routerstatus_t *hs_dir,
+                                           const char *desc_id_base32,
+                                           time_t now, int set);
+#endif
 
 #endif
 

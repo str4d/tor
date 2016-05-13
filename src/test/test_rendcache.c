@@ -89,6 +89,50 @@ test_rend_cache_lookup_entry(void *data)
 }
 
 static void
+test_rend_cache_remove_valid_entry(void *data)
+{
+  int ret;
+  rend_data_t *mock_rend_query = NULL;
+  char desc_id_base32[REND_DESC_ID_V2_LEN_BASE32 + 1];
+  rend_cache_entry_t *entry = NULL;
+  rend_encoded_v2_service_descriptor_t *desc_holder = NULL;
+  char *service_id = NULL;
+  (void)data;
+
+  rend_cache_init();
+
+  generate_desc(RECENT_TIME, &desc_holder, &service_id, 3);
+
+  /* setup rend_query struct */
+  mock_rend_query = mock_rend_data(service_id);
+  base32_encode(desc_id_base32, sizeof(desc_id_base32), desc_holder->desc_id,
+                DIGEST_LEN);
+
+  /* add entry to cache */
+  ret = rend_cache_store_v2_desc_as_client(desc_holder->desc_str,
+                                           desc_id_base32, mock_rend_query,
+                                           NULL);
+  tt_int_op(ret, OP_EQ, 0);
+
+  /* confirm entry is in cache */
+  ret = rend_cache_lookup_entry(service_id, -1, &entry);
+  tt_int_op(ret, OP_EQ, 0);
+  tt_assert(entry);
+  tt_int_op(entry->len, OP_EQ, strlen(desc_holder->desc_str));
+  tt_str_op(entry->desc, OP_EQ, desc_holder->desc_str);
+
+  /* remove entry from cache */
+  rend_cache_remove_entry(service_id);
+  entry = NULL;
+  ret = rend_cache_lookup_entry(service_id, -1, &entry);
+  tt_int_op(ret, OP_EQ, -ENOENT);
+  tt_assert(!entry);
+
+ done:
+  rend_cache_free_all();
+}
+
+static void
 test_rend_cache_store_v2_desc_as_client(void *data)
 {
   int ret;
@@ -1250,6 +1294,7 @@ struct testcase_t rend_cache_tests[] = {
   { "lookup", test_rend_cache_lookup_entry, 0, NULL, NULL },
   { "lookup_v2_desc_as_dir", test_rend_cache_lookup_v2_desc_as_dir, 0,
     NULL, NULL },
+  { "remove_valid_entry", test_rend_cache_remove_valid_entry, 0, NULL, NULL },
   { "store_v2_desc_as_client", test_rend_cache_store_v2_desc_as_client, 0,
     NULL, NULL },
   { "store_v2_desc_as_client_with_different_time",
